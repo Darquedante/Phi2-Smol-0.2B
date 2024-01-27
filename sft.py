@@ -193,7 +193,7 @@ trainer = Trainer(
 
 
 # %% [markdown]
-# # 6. 开始训练
+# # 6. Start Training
 
 # %%
 trainer.train(
@@ -201,14 +201,14 @@ trainer.train(
 )
 
 # %% [markdown]
-#  计算困惑度Perplexity 
+# Compute Perplexity
 
 # %%
 eval_results = trainer.evaluate()
 print(f"Perplexity: {np.exp(eval_results['eval_loss']):.2f}")
 
 # %% [markdown]
-# # 7. 保存日志和模型
+# # 7. Save Logs and Model
 
 # %%
 loss_log = pd.DataFrame(trainer.state.log_history)
