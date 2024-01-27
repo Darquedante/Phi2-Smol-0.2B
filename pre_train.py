@@ -3,11 +3,11 @@ import os, platform, time
 from typing import Optional
 
 from transformers import PreTrainedTokenizerFast, DataCollatorForLanguageModeling, PhiConfig, PhiForCausalLM, Trainer, TrainingArguments, TrainerCallback
-from datasets import load_dataset, Dataset
+from datasets import load_dataset, Dataset  
 import pandas as pd
 from transformers.trainer_callback import TrainerControl, TrainerState
-import numpy as np
-from dataclasses import dataclass,field
+import numpy as np 
+from dataclasses import dataclass, field
 import torch
 
 # %%
@@ -16,118 +16,103 @@ os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 attn_implementation = 'flash_attention_2'
 try:
-    from flash_attn import flash_attn_func
+    from flash_attn import flash_attn_func 
 except Exception as e:
     attn_implementation = 'eager'
 
-# %% [markdown]
-# # 1. 训练数据来源
+# %% [markdown]  
+# # 1. Training data source
 
 TRAIN_FILES = [
-    './data/wiki_chunk_320_2.2M.parquet', 
-    './data/bell_pretrain_400_3M.parquet',
+    './data/wiki_chunk_320_2.2M.parquet',
+    './data/bell_pretrain_400_3M.parquet',  
 ]
 
 EVAL_FILE = './data/pretrain_eval_400_1w.parquet'
 
 # %%
 
-@dataclass
+@dataclass  
 class PretrainArguments:
     tokenizer_dir: str = './model_save/tokenizer/'
     model_save_dir: str = './model_save/pre/'
     logs_dir: str = './logs/'
     train_files: list[str] = field(default_factory=lambda: TRAIN_FILES)
     eval_file: str = EVAL_FILE
-    max_seq_len: int = 512
+    max_seq_len: int = 512  
 
-    # Windows 使用默认的attention实现，
+    # Use default attention implementation on Windows
     attn_implementation: str = 'eager' if platform.system() == 'Windows' else attn_implementation
 
-
-pretrain_args = PretrainArguments()
+pretrain_args = PretrainArguments()  
 
 # %% [markdown]
-# # 2. 加载训练好的tokenizer
-# 如果你使用的`add_tokens`方法添加了自己的token，必须要用`len(tokenizer)`获取长度，`tokenizer.vocab_size`统计不包含你添加的字符。
+# # 2. Load pretrained tokenizer  
+# If you added your own tokens with `add_tokens`, you must use `len(tokenizer)` to get the length. `tokenizer.vocab_size` does not include tokens you added.  
 
 # %%
-tokenizer = PreTrainedTokenizerFast.from_pretrained(pretrain_args.tokenizer_dir)
+tokenizer = PreTrainedTokenizerFast.from_pretrained(pretrain_args.tokenizer_dir)  
 
 # %% [markdown]
-# # 5. 定义模型
-# 从`config`定义，不是`from_pretrained`。 
-# 为了方便cuda计算，词表的大小注意一下，如果不是64的整数倍，可以手动向上取整为64的整数倍，也可以是其他 $2^x$ 数值的整数倍，如32、128、256都行。
+# # 5. Define the model  
+# Define from `config`, not `from_pretrained`.  
+# For ease of cuda computation, pay attention to the size of the vocabulary. If it is not a multiple of 64, manually round up to a multiple of 64, or another power of 2 like 32, 128, 256.  
 
 # %%
 vocab_size = len(tokenizer)
 if vocab_size % 64 != 0:
     vocab_size = (vocab_size // 64 + 1) * 64
-print(f"final vocab sieze: {vocab_size}")
+print(f"final vocab sieze: {vocab_size}")  
 
-# %% [markdown]
-# ## token to id缓存到文件，使用的时候不用再次tokenize
-# 如果词表大小小于 65535 用uint16存储，节省磁盘空间，否则用uint32存储
+# %% [markdown]  
+# ## Cache token to id mapping to file, so no need to tokenize again during use
+# Use uint16 if vocab size < 65535 to save space, else uint32
+
 # %%
 map_dtype = np.uint16 if vocab_size < 65535 else np.uint32
 
 def token_to_id(samples: dict[str, list]) -> dict:
 
     batch_txt = samples['text']
-    outputs = tokenizer(
-        batch_txt,
+    outputs = tokenizer( 
+        batch_txt,  
         truncation=False,
         padding=False,
-        return_attention_mask=False,
+        return_attention_mask=False, 
     )
 
-    input_ids = [np.array(item, dtype=map_dtype) for item in outputs["input_ids"]]
+    input_ids = [np.array(item, dtype=map_dtype) for item in outputs["input_ids"]]  
 
-    return {
+    return {  
             "input_ids": input_ids
-        }
+        }  
 
-# print(token_to_id({'text':['判断给定的文章是否符合语法规则。如果不符合，请提供修改建议。\n','下面是一篇文章的开头: "为了探讨这个主题，本文将提供一系列数据和实例，以证明这一观点。']}))
 
-# step 3 加载数据集
+# %% [markdown]  
+# # 3. Load dataset and map
 
 # %%
 def get_maped_dataset(files: str|list[str]) -> Dataset:
     dataset = load_dataset(path='parquet', data_files=files, split='train', cache_dir='.cache')
     maped_dataset = dataset.map(token_to_id, batched=True, batch_size=1_0000, remove_columns=dataset.column_names)
-    return maped_dataset
+    return maped_dataset  
 
 train_dataset = get_maped_dataset(pretrain_args.train_files)
 eval_dataset = get_maped_dataset(pretrain_args.eval_file)
 
 print(train_dataset, eval_dataset)
-# %% [markdown]
-# # 4. 定义data_collator
-# `mlm=False`表示要训练CLM模型，`mlm=True`表示要训练MLM模型
-
-# %%
-data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
-
-# %%
-# few_data = [tokenized_datasets[i] for i in range(5)]
-# print(few_data)
 
 # %% [markdown]
-# ##  验证一下数据看padding、输入输出是否符合要求
+# # 4. Define data_collator 
+# Set `mlm=False` for CLM, `mlm=True` for MLM
+
+# %% 
+data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)  
+
+# %% [markdown]
+# ## Validate data, check padding, input/output meets requirements   
 
 # %%
-# out = data_collator(few_data)
-# print(out.keys())
-# for key in out:
-#     # print(out[key])
-#     print(f"{key} shape: {out[key].shape}")
-
-# # input_ids 和 labels 相同
-# sum(out['input_ids'][0] == out['labels'][0]) == sum(out['attention_mask'][0])
-
-# %%
-# 如果配置了flash_attention_2，请手动设置set_default_dtype为float16
-#  Flash Attention 2.0 only supports torch.float16 and torch.bfloat16 dtypes.
 if pretrain_args.attn_implementation == 'flash_attention_2':
     torch.set_default_dtype(torch.bfloat16)
 
@@ -135,76 +120,74 @@ if pretrain_args.attn_implementation == 'flash_attention_2':
 # %%
 phi_config = PhiConfig(
     vocab_size=vocab_size,
-    bos_token_id=tokenizer.bos_token_id,
+    bos_token_id=tokenizer.bos_token_id, 
     eos_token_id=tokenizer.eos_token_id,
     hidden_size=960,
     num_attention_heads=16,
     num_hidden_layers=22,
     max_position_embeddings=512,
     intermediate_size=4096,
-    attn_implementation=pretrain_args.attn_implementation,
+    attn_implementation=pretrain_args.attn_implementation,  
 )
 
 model = PhiForCausalLM(phi_config)
-# model = model.to_bettertransformer()
+# model = model.to_bettertransformer()  
 
-# 另外一个使用flash_attention_2的方法
-# model = PhiForCausalLM.from_pretrained('./model_save/300m', torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2")
-# model = model.to('cuda')
+# Another way to use flash_attention_2
+# model = PhiForCausalLM.from_pretrained('./model_save/300m', torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2") 
+# model = model.to('cuda')  
 
 model_size = sum(t.numel() for t in model.parameters())
 print(f"Phi-2 size: {model_size / 1000**2:.1f}M parameters")
 
 # %% [markdown]
-# # 6. cuda cache回调函数
+# # 6. cuda cache callback  
 
 # %%
 class MyTrainerCallback(TrainerCallback):
     log_cnt = 0
     def on_log(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
         '''
-        在打印 n 次日志后清除cuda缓存，适合低显存设备，能防止OOM
+        Clear cuda cache every n logs, for low memory devices, prevent OOM
         '''
-        self.log_cnt += 1
+        self.log_cnt += 1 
         if self.log_cnt % 2 == 0:
-            torch.cuda.empty_cache()
-    
+            torch.cuda.empty_cache()  
+        
     def on_epoch_end(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
         '''
-        在on_epoch_end时保存一次模型。
-        TrainingArguments的 save_strategy 中 epoch 和 steps 不兼容。要实现每隔 save_steps 步保存一次检查点，考虑到磁盘空间大小，最多只保存最近3个检查点。
+        Save model on epoch end.  
+        epoch and steps in TrainingArguments save_strategy are not compatible. To save every save_steps, consider disk space and keep max last 3 checkpoints.  
         '''
-        # 设置should_save=True并返回即可
+        # Set should_save=True  
         control.should_save = True
         return control
     
-my_trainer_callback = MyTrainerCallback()
+my_trainer_callback = MyTrainerCallback()  
 
-# %% [markdown]
-# # 6. 定义训练参数
+# %% [markdown]  
+# # 6. Define training args  
 
 # %%
-args = TrainingArguments(
+args = TrainingArguments(  
     output_dir=pretrain_args.model_save_dir,
     per_device_train_batch_size=4,
-    gradient_accumulation_steps=32,
+    gradient_accumulation_steps=32, 
     num_train_epochs=4,
     weight_decay=0.1,
     warmup_steps=1000,
     learning_rate=5e-4,
     evaluation_strategy='steps',
-    eval_steps=2000,
+    eval_steps=2000,  
     save_steps=2000,
     save_strategy='steps',
     save_total_limit=3,
-    report_to='tensorboard',
-    optim="adafactor",
-    bf16=True,
+    report_to='tensorboard',   
+    optim="adafactor",   
+    bf16=True,  
     logging_steps=5,
     log_level='info',
-    logging_first_step=True,
-    # group_by_length=True,
-    # deepspeed='./ds_config_one_gpu.json',
+    logging_first_step=True,  
 )
 
 trainer = Trainer(
@@ -214,34 +197,32 @@ trainer = Trainer(
     data_collator=data_collator,
     train_dataset=train_dataset,
     eval_dataset=eval_dataset,
-    callbacks=[my_trainer_callback],
+    callbacks=[my_trainer_callback],  
 )
 
-# %% [markdown]
-# # 7. 开始训练
-# `resume_from_checkpoint=True`参数可以从上次保存的检查点继续训练
+# %% [markdown]  
+# # 7. Start training
+# Set `resume_from_checkpoint=True` to resume from last checkpoint
 
 # %%
-trainer.train(
+trainer.train( 
     # resume_from_checkpoint=True
 )
 
 # %% [markdown]
-#  计算困惑度Perplexity 
+# Calculate perplexity
 
 # %%
 eval_results = trainer.evaluate()
-print(f"Perplexity: {np.exp(eval_results['eval_loss']):.2f}")
+print(f"Perplexity: {np.exp(eval_results['eval_loss']):.2f}")  
 
 # %% [markdown]
-# # 8. 最后保存训练的loss日志和模型
+# # 8. Save final loss log and model  
 
-# %%
+# %%  
 
 loss_log = pd.DataFrame(trainer.state.log_history)
-loss_log.to_csv(f"./logs/pre_train_log_{time.strftime('%Y%m%d-%H%M')}.csv")
+loss_log.to_csv(f"./logs/pre_train_log_{time.strftime('%Y%m%d-%H%M')}.csv")  
 
 
 trainer.save_model(pretrain_args.model_save_dir)
-
-
