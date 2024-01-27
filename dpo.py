@@ -10,7 +10,7 @@ import torch
 from trl import DPOTrainer
 
 # %% [markdown]
-# # 1. 定义sft模型路径及dpo数据
+# # 1. Define sft model path and dpo data
 
 # %%
 dpo_file = './data/dpo_train_data.json'
@@ -20,11 +20,11 @@ model_save_dir = './model_save/dpo/'
 max_seq_len = 320
 
 # %% [markdown]
-# ## 2. 加载数据集
+# ## 2. Load dataset
 
 # %%
 tokenizer = PreTrainedTokenizerFast.from_pretrained(tokenizer_dir)
-print(f"vicab size: {len(tokenizer)}")
+print(f"vocab size: {len(tokenizer)}")
 
 # %%
 dataset = load_dataset(path='json', data_files=dpo_file, split='train', cache_dir='.cache')
@@ -33,8 +33,8 @@ dataset = load_dataset(path='json', data_files=dpo_file, split='train', cache_di
 dataset[0]
 
 # %% [markdown]
-# # 3. 数据集token格式化
-# 将dpo数据集三列数据添加上`eos`token，`bos`可加可不加
+# # 3. Dataset token formatting
+# Add `eos` token to the three columns of dpo dataset, `bos` can be added or not
 
 # %%
 def split_prompt_and_responses(samples: dict[str, str]) -> Dict[str, str]:
@@ -49,14 +49,14 @@ def split_prompt_and_responses(samples: dict[str, str]) -> Dict[str, str]:
         return {
               'prompt': prompts,
               'chosen': chosens,
-              'rejected':rejects,
+              'rejected': rejects,
         }
 
 dataset = dataset.map(split_prompt_and_responses, batched=True,).shuffle(2333)
 
 # %% [markdown]
-# # 4. 加载模型
-# `model`和`model_ref`开始时是同一个模型，只训练`model`的参数，`model_ref`参数保存不变
+# # 4. Load model
+# `model` and `model_ref` start as the same model, only train `model` parameters, keep `model_ref` parameters unchanged
 
 # %%
 
@@ -67,8 +67,8 @@ model_size = sum(t.numel() for t in model.parameters())
 print(f"Phi-2 size: {model_size / 1000**2:.1f}M parameters")
 
 # %% [markdown]
-# # 5. 定义训练中的回调函数
-# 清空cuda缓存，dpo要加载两个模型，显存占用较大，这能有效缓解低显存机器显存缓慢增长的问题
+# # 5. Define training callbacks
+# Clear CUDA cache, dpo loads two models, consuming more memory, this effectively mitigates slow memory growth on low memory machines
 
 # %%
 class EmptyCudaCacheCallback(TrainerCallback):
@@ -78,10 +78,10 @@ class EmptyCudaCacheCallback(TrainerCallback):
         if self.log_cnt % 5 == 0:
             torch.cuda.empty_cache()
             
-empty_cuda_cahce = EmptyCudaCacheCallback()
+empty_cuda_cache = EmptyCudaCacheCallback()
 
 # %% [markdown]
-# # 6. 定义训练参数
+# # 6. Define training parameters
 
 # %%
 args = TrainingArguments(
@@ -111,19 +111,19 @@ trainer = DPOTrainer(
     beta=0.1,
     train_dataset=dataset,
     tokenizer=tokenizer,
-    callbacks=[empty_cuda_cahce],
+    callbacks=[empty_cuda_cache],
     max_length=max_seq_len * 2 + 16, # 16 for eos bos
     max_prompt_length=max_seq_len,
 )
 
 # %% [markdown]
-# # 7. 训练
+# # 7. Training
 
 # %%
 trainer.train()
 
 # %% [markdown]
-# # 8. 保存日志及模型
+# # 8. Save logs and model
 
 # %%
 loss_log = pd.DataFrame(trainer.state.log_history)
@@ -131,5 +131,4 @@ loss_log.to_csv(f"./logs/dpo_train_log_{time.strftime('%Y%m%d-%H%M')}.csv")
 
 
 trainer.save_model(model_save_dir)
-
 
