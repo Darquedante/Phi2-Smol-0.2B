@@ -1,13 +1,12 @@
-# Phi2-Chinese-0.2B Train your own Phi2 Chinese small model from scratch
+# Phi2-Tiny-0.2B Train your own Phi2 smpl model from scratch
 
-**This project is experimental, with open-source code and model weights. The pre-training data is limited. For a better Chinese small model, consider the [ChatLM-mini-Chinese](https://github.com/charent/ChatLM-mini-Chinese) project.**
+**This project is experimental, with open-source code and model weights. The pre-training data is limited.
 
 - Supports acceleration with flash attention 2
 
 
 # 1. ⚗️ Data Cleaning
-For example, adding periods at the end of sentences, converting Traditional Chinese to Simplified Chinese, removing duplicate punctuation (e.g., many dialogue corpora have a lot of `"。。。。。"`), NFKC Unicode normalization (mainly full-width to half-width conversion and dealing with \u3000 \xa0 in web data), etc.   
-For specific data cleaning processes, refer to the [ChatLM-mini-Chinese](https://github.com/charent/ChatLM-mini-Chinese) project.
+For example, adding periods at the end of sentences, removing duplicate punctuation (e.g., many dialogue corpora have a lot of `"。。。。。"`), etc.   
 
 
 
@@ -67,7 +66,7 @@ During the DPO process, there should be two models: one for training and one for
 
 # 6. 📑 Usage of This Project's Model
 ## 6.1 General Conversation Capabilities
-Model weights in `huggingface` repository: [Phi2-Chinese-0.2B](https://huggingface.co/charent/Phi2-Chinese-0.2B)
+Model weights in `huggingface` repository: [Phi2-smol-0.2B](https://huggingface.co/TBD/Phi2-Smol-0.2B)
 ```python
 from transformers import AutoTokenizer, AutoModelForCausalLM, GenerationConfig
 import torch
