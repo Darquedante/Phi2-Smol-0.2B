@@ -104,17 +104,18 @@ def batched_formatting_prompts_func(example: list[dict]) -> list[str]:
 # print(batched_formatting_prompts_func(samples))
 
 # %%
+# Shuffle the dataset with batched formatting prompts and remove columns
 dataset = dataset.map(batched_formatting_prompts_func, batched=True, remove_columns=dataset.column_names).shuffle(23333)
 
 # %% [markdown]
-# ## 2.2 定义data_collator
+# ## 2.2 Define data_collator
 
 # %%
-# mlm=False表示训练的是CLM模型
+# Set mlm=False to indicate training a CLM model
 data_collator = DataCollatorForCompletionOnlyLM(instruction_template=instruction_template, response_template=response_template, tokenizer=tokenizer, mlm=False)
 
 # %% [markdown]
-# # 4. 加载预训练模型
+# # 4. Load pretrained model
 
 # %%
 
@@ -124,8 +125,24 @@ model_size = sum(t.numel() for t in model.parameters())
 print(f"Phi2 size: {model_size / 1000**2:.2f}M parameters")
 
 # %% [markdown]
-# ## 定义训练过程中的回调函数
-# N次log之后情况cuda缓存，能有效缓解低显存机器显存缓慢增长的问题
+# ## Define callback functions during training
+# Clear the CUDA cache after N log iterations to effectively reduce memory growth on low-memory GPUs
+
+# %%
+class EmptyCudaCacheCallback(TrainerCallback):
+    log_cnt = 0
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        self.log_cnt += 1
+        if self.log_cnt % 5 == 0:
+            torch.cuda.empty_cache()
+            
+empty_cuda_cahce = EmptyCudaCacheCallback()
+
+# %% 
+my_datasets =  dataset.train_test_split(test_size=4096)
+
+# %% [markdown]
+# # 5. Define training parameters
 
 # %%
 class EmptyCudaCacheCallback(TrainerCallback):
