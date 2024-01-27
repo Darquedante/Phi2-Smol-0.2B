@@ -3,12 +3,12 @@ import re
 from datasketch import MinHash, MinHashLSH
 from collections import defaultdict
 
-# 保留中文和英文、下划线，不要标点符号
+# Retain English, and underscores, excluding punctuation marks
 NON_CHAR = re.compile("[^[\u4E00-\u9FA5|A-Za-z_0-9]")
 
 def _get_doc_mini_hash(doc: list[str] | str, num_perm: int) -> MinHash:
     '''
-    获取一段文本的mini hash
+    Get the mini hash of a text segment
     '''
     mini_hash = MinHash(num_perm=num_perm)
     for s in doc:
@@ -19,8 +19,8 @@ class DropDatasetDuplicate:
 
     def __init__(self,  threshold: float=0.85, num_perm: int=256) -> None:
         '''
-        获取一个数据集中所有重复（相似的超过threshold）的index，输入为：list[str]，一个str元素为一段文本(doc)
-        如输入： [a, b, c, d, c, d, e] 返回：{4, 5} (后面两个 c, d 的index)
+        Get all duplicate (similar over threshold) indexes in a dataset, input as: list[str], where a str element is a text segment (doc)
+        For example, input: [a, b, c, d, c, d, e] returns: {4, 5} (indexes of the latter two c, d)
         '''
         self.similar_index_cluster = defaultdict(set)
         self.data_lsh = MinHashLSH(threshold=threshold, num_perm=num_perm) 
@@ -28,29 +28,29 @@ class DropDatasetDuplicate:
 
     def add_doc(self, index: object, doc: str,) -> set[int]:
         '''
-        添加文档，
-        index： 文档的索引
-        doc: 文档本身
+        Add a document,
+        index: Index of the document
+        doc: The document itself
         '''
 
-        # 只保留中文和英文、下划线，不要标点符号
+        # Retain only English, and underscores, excluding punctuation marks
         doc = ''.join(NON_CHAR.split(doc))
         # doc = [''.join(t) for t in list(ngrams(doc, 3))]
 
         doc_hash = _get_doc_mini_hash(doc, self.num_perm)
-        close_duplicates = self.data_lsh.query(doc_hash)
+        close duplicates = self.data_lsh.query(doc_hash)
 
         self.data_lsh.insert(index, doc_hash)
 
-        # 所有相似的doc在similar_index_cluster中的key都是最早出现的idx
-        # 如：data中索引inndex 2, 7, 8, 9, 10, 12 是相似的，则在similar_index_cluster中表现为 {2: {8, 9, 10, 12}}
+        # All similar docs in similar_index_cluster have the key as the earliest appearing index
+        # For example: if indexes 2, 7, 8, 9, 10, 12 in data are similar, then it is represented in similar_index_cluster as {2: {8, 9, 10, 12}}
         if len(close_duplicates) > 0:
             min_idx= min(close_duplicates)
             self.similar_index_cluster[min_idx].add(index)
     
     def get_duplicate_indexs(self):
         '''
-        返回所有的重复文档索引
+        Return all duplicate document indexes
         '''
         similar_index_cluster = self.similar_index_cluster
         need_to_remove_idx = set()
@@ -62,15 +62,15 @@ class DropDatasetDuplicate:
 
 def get_dataset_duplicate_index(data: list[str], threshold: float=0.85, num_perm: int=256) -> set[int]:
     '''
-    获取一个数据集中所有重复（相似的超过threshold）的index，输入为：list[str]，一个str元素为一段文本(doc)
-    如输入： [a, b, c, d, c, d, e] 返回：{4, 5} (后面两个 c, d 的index)
+    Get all duplicate (similar over threshold) indexes in a dataset, input as: list[str], where a str element is a text segment (doc)
+    For example, input: [a, b, c, d, c, d, e] returns: {4, 5} (indexes of the latter two c, d)
     '''
     similar_index_cluster = defaultdict(set)
     data_lsh = MinHashLSH(threshold=threshold, num_perm=num_perm)
 
     for i, doc in enumerate(data):
 
-        # 只保留中文和英文、下划线，不要标点符号
+        # Retain only English, and underscores, excluding punctuation marks
         doc = ''.join(NON_CHAR.split(doc))
         # doc = [''.join(t) for t in list(ngrams(doc, 3))]
 
@@ -79,8 +79,8 @@ def get_dataset_duplicate_index(data: list[str], threshold: float=0.85, num_perm
 
         data_lsh.insert(i, doc_hash)
 
-        # 所有相似的doc在similar_index_cluster中的key都是最早出现的idx
-        # 如：data中索引inndex 2, 7, 8, 9, 10, 12 是相似的，则在similar_index_cluster中表现为 {2: {8, 9, 10, 12}}
+        # All similar docs in similar_index_cluster have the key as the earliest appearing index
+        # For example: if indexes 2, 7, 8, 9, 10, 12 in data are similar, then it is represented in similar_index_cluster as {2: {8, 9, 10, 12}}
         if len(close_duplicates) > 0:
             min_idx= min(close_duplicates)
             similar_index_cluster[min_idx].add(i)
