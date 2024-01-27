@@ -158,7 +158,7 @@ empty_cuda_cahce = EmptyCudaCacheCallback()
 my_datasets =  dataset.train_test_split(test_size=4096)
 
 # %% [markdown]
-# # 5. 定义训练参数
+# # 5. Define Training Parameters
 
 # %%
 args = TrainingArguments(
