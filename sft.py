@@ -1,52 +1,38 @@
-# %%
+# Import necessary libraries and modules
 from datasets import load_dataset
 from transformers import PreTrainedTokenizerFast, PhiForCausalLM, TrainingArguments, Trainer, TrainerCallback
-from datasets import load_dataset
 import pandas as pd
 import numpy as np
 import time
 import torch
 from trl import DataCollatorForCompletionOnlyLM
 
-# %% [markdown]
-# # 1. 定义训练数据，tokenizer，预训练模型的路径及最大长度
-
-# %%
+# Define training data, tokenizer, pretrained model path, and maximum sequence length
 sft_file = './data/sft_train_data.parquet'
 tokenizer_dir = './model_save/tokenizer/'
 sft_from_checkpoint_file = './model_save/pre/'
 model_save_dir = './model_save/sft/'
 max_seq_len = 320
 
-# %% [markdown]
-# # 2. 加载训练数据集
-
-# %%
+# Load the training dataset from a parquet file
 dataset = load_dataset(path='parquet', data_files=sft_file, split='train', cache_dir='.cache')
 
-# %%
-dataset
-
-# %%
-# samples = dataset[0:2]
-# print(samples)
-
-# %%
+# Initialize a tokenizer
 tokenizer = PreTrainedTokenizerFast.from_pretrained(tokenizer_dir)
-print(f"vicab size: {len(tokenizer)}")
+print(f"Vocabulary size: {len(tokenizer)}")
 
-# %% [markdown]
-# ## 2.1 定义sft data_collator的指令字符
-# 注释掉的这段代码是手动将`instruction_template_ids`和`response_template_ids`添加到input_ids中的，因为如果是byte level tokenizer可能将`:`和后面的字符合并，导致找不到`instruction_template_ids`和`response_template_ids`。 
-# 
-# 也可以像下文一样通过在`'#'`和`':'`前后手动加`'\n'`解决
-
-# %%
-instruction_template = "##提问:"
-response_template = "##回答:"
+# Define special characters for the sft data_collator
+# The commented code block below is used to manually add 'instruction_template_ids' and 'response_template_ids'
+# to input_ids because with a byte-level tokenizer, ':' and the following characters may get combined,
+# causing issues in finding 'instruction_template_ids' and 'response_template_ids'.
+# You can also manually add '\n' before and after '#' and ':' as shown in the following sections.
 
 # %%
-# 注释掉的这段代码是手动将`instruction_template_ids`和`response_template_ids`添加到input_ids中
+instruction_template = "## Question:"
+response_template = "## Answer:"
+
+# %%
+# The commented-out code block below is used to manually add 'instruction_template_ids' and 'response_template_ids' to input_ids.
 
 # template_ids = tokenizer([instruction_template, response_template])['input_ids']
 # instruction_template_ids, response_template_ids = template_ids[0], template_ids[1]
@@ -78,7 +64,7 @@ response_template = "##回答:"
     
 #     def __call__(self, features, return_tensors=None):
 #         '''
-#         执行formatting_prompts_func map后，dataset的__getitem__方法返回的是batch_size个input_ids
+#         After executing formatting_prompts_func map, the dataset's __getitem__ method will return batch_size input_ids.
 #         '''
 #         batch_size = len(features)
 #         paded_input_ids = tokenizer.pad(
@@ -93,10 +79,11 @@ response_template = "##回答:"
 #                 {'input_ids': }
 #             )
 
-#         # 最后让父类执行LM mask即可
+#         # Let the parent class execute LM mask in the end.
 #         return super().__call__(data, return_tensors)
 
 # %%
+
 
 map_dtype = np.uint16 if len(tokenizer) < 65535 else np.uint32
 
